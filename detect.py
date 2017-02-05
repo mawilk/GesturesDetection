@@ -2,13 +2,16 @@ import math
 import cv2
 import numpy as np
 
-WIDTH, HEIGHT = 830, 630
+WIDTH, HEIGHT = 400, 300
 
+BLUE = (255, 0 , 0)
+GREEN = (0, 255, 0)
+RED = (0, 0, 255)
 
 def get_frame():
     _, frame = capture.read()
     frame = frame[:, ::-1]  # flip video capture
-    return cv2.resize(frame, (400, 300))
+    return cv2.resize(frame, (WIDTH, HEIGHT))
 
 
 def get_hand_contour(image):
@@ -24,20 +27,17 @@ def get_hand_contour(image):
     return contour
 
 
-def get_image_with_convex_hull(image, contour):
-    image_copy = np.copy(image)
+def get_convex_hull(contour):
     convex_hull = cv2.convexHull(contour)
-    cv2.drawContours(image_copy, [contour], 0, (255, 255, 255), 2)
-    cv2.drawContours(image_copy, [convex_hull], 0, (255, 255, 255), 2)
-    return image_copy
+    return convex_hull
 
 
-def get_image_with_defect_points(image, contour):
-    image_copy = np.zeros(image.shape)
-    defects = cv2.convexityDefects(contour, cv2.convexHull(contour, returnPoints=False))
+def get_defect_points(contour):
+    convexityDefects = cv2.convexityDefects(contour, cv2.convexHull(contour, returnPoints=False))
     defects_count = 0
-    for i in range(defects.shape[0]):
-        s, e, f, d = defects[i, 0]
+    defects = []
+    for i in range(convexityDefects.shape[0]):
+        s, e, f, d = convexityDefects[i, 0]
         start = tuple(contour[s][0])
         end = tuple(contour[e][0])
         far = tuple(contour[f][0])
@@ -47,16 +47,27 @@ def get_image_with_defect_points(image, contour):
         angle = math.acos((b**2 + c**2 - a**2)/(2*b*c)) * 57
         if angle <= 90:
             defects_count += 1
-            cv2.circle(image_copy, far, 3, [255, 255, 255], -1)
-        cv2.line(image_copy, start, end, [255, 255, 255], 2)
-    return defects_count, image_copy
+            defects.append(far)
+    return defects_count, defects
+
+
+def drawContour(img, contour, color):
+    cv2.drawContours(img, [contour], 0, color, 2)
+
+
+def drawPoint(img, middle, color):
+    cv2.circle(img, middle, 3, color, -1)
+
+
+def drawElementsToImage(img, contour, convex_hull, defect_points):
+    drawContour(img, contour, BLUE)
+    drawContour(img, convex_hull, GREEN)
+    for point in defect_points:
+        drawPoint(img, point, RED)
 
 
 def main():
     while True:
-        # create image to show
-        image = np.zeros((HEIGHT, WIDTH), np.uint8)
-
         # get image from camera
         frame = get_frame()
 
@@ -64,19 +75,25 @@ def main():
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (3, 3), 0)
         ret, thresh1 = cv2.threshold(blur, 70, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        thresh1 = cv2.bitwise_not(thresh1)
 
         # finding contours
         hand_contour = get_hand_contour(thresh1)
-        image_with_convex_hull = get_image_with_convex_hull(thresh1, hand_contour)
-        defects_count, image_with_defect_points = get_image_with_defect_points(image_with_convex_hull, hand_contour)
+        convex_hull = get_convex_hull(hand_contour)
+        defects_count, defect_points = get_defect_points(hand_contour)
+        print defects_count
 
         # draw transformation on image
-        image[10:10 + 300, 10:10 + 400] = gray
-        image[320:320 + 300, 10:10 + 400] = image_with_convex_hull
-        image[10:10 + 300, 420:420 + 400] = thresh1
-        image[320:320 + 300, 420:420 + 400] = image_with_defect_points
+        thresh_image = cv2.cvtColor(thresh1, cv2.COLOR_GRAY2BGR)
+        thresh_with_elements = np.copy(thresh_image)
+        frame_with_elements = np.copy(frame)
 
-        print defects_count
+        drawElementsToImage(thresh_with_elements, hand_contour, convex_hull, defect_points)
+        drawElementsToImage(frame_with_elements, hand_contour, convex_hull, defect_points)
+
+        top = np.hstack((frame, frame_with_elements))
+        bottom = np.hstack((thresh_image, thresh_with_elements))
+        image = np.vstack((top, bottom))
 
         # show image
         cv2.imshow('frame', image)
@@ -84,7 +101,6 @@ def main():
         # quit application
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
 
 if __name__ == '__main__':
     capture = cv2.VideoCapture(0)
