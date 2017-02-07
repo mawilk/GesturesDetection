@@ -36,18 +36,19 @@ def get_defect_points(contour):
     convexityDefects = cv2.convexityDefects(contour, cv2.convexHull(contour, returnPoints=False))
     defects_count = 0
     defects = []
-    for i in range(convexityDefects.shape[0]):
-        s, e, f, d = convexityDefects[i, 0]
-        start = tuple(contour[s][0])
-        end = tuple(contour[e][0])
-        far = tuple(contour[f][0])
-        a = math.sqrt((end[0] - start[0])**2 + (end[1] - start[1])**2)
-        b = math.sqrt((far[0] - start[0])**2 + (far[1] - start[1])**2)
-        c = math.sqrt((end[0] - far[0])**2 + (end[1] - far[1])**2)
-        angle = math.acos((b**2 + c**2 - a**2)/(2*b*c)) * 57
-        if angle <= 90:
-            defects_count += 1
-            defects.append(far)
+    if convexityDefects is not None:
+        for i in range(convexityDefects.shape[0]):
+            s, e, f, d = convexityDefects[i, 0]
+            start = tuple(contour[s][0])
+            end = tuple(contour[e][0])
+            far = tuple(contour[f][0])
+            a = math.sqrt((end[0] - start[0])**2 + (end[1] - start[1])**2)
+            b = math.sqrt((far[0] - start[0])**2 + (far[1] - start[1])**2)
+            c = math.sqrt((end[0] - far[0])**2 + (end[1] - far[1])**2)
+            angle = math.acos((b**2 + c**2 - a**2)/(2*b*c)) * 57
+            if angle <= 90:
+                defects_count += 1
+                defects.append(far)
     return defects_count, defects
 
 
