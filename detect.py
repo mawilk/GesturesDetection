@@ -60,15 +60,11 @@ def get_defect_points(contour):
 
 def limit_finger_tips(potential_tips, center):
     result = []
+
+    potential_tips = [item for item in potential_tips if is_above(item, center, 80)]
+
     if len(potential_tips) <= 0:
         return result
-
-    potential_tips = [item for item in potential_tips if is_above(item, center, 100)]
-
-    furthest = max(potential_tips, key=lambda pt:get_distance(pt, center))
-    hand_radius = get_distance(furthest, center) / 2
-
-    potential_tips = [item for item in potential_tips if get_distance(item, center) > hand_radius]
 
     potential_tips = sorted(potential_tips, key=lambda pt: pt[0])
 
@@ -78,6 +74,17 @@ def limit_finger_tips(potential_tips, center):
         dist = get_distance(potential_tips[i], potential_tips[i + 1])
         if dist > 15:
             result.append(potential_tips[i + 1])
+    return result
+
+
+def get_labeled_tips(last, present):
+    result = {}
+
+    for tip in present:
+        for idx, position in last.iteritems():
+            if get_distance(tip, position) < 15:
+                result[idx] = tip
+
     return result
 
 
@@ -109,18 +116,29 @@ def draw_point(img, middle, color):
     cv2.circle(img, middle, 4, color, -1)
 
 
-def draw_elements_to_image(img, contour, convex_hull, defect_points, middle, tips):
+def draw_elements_to_image(img, contour, convex_hull, defect_points, middle):
     draw_contour(img, contour, BLUE)
     draw_contour(img, convex_hull, GREEN)
     for point in defect_points:
         draw_point(img, point, RED)
     draw_point(img, middle, YELLOW)
-    for i in xrange(len(tips)):
-        cv2.putText(img, str(i + 1), tips[i], cv2.FONT_HERSHEY_COMPLEX, 1, 80)
-        draw_point(img, tips[i], YELLOW)
+
+
+def draw_labeled_tips(img, tips):
+    for idx, position in tips.iteritems():
+        cv2.putText(img, str(idx + 1), position, cv2.FONT_HERSHEY_COMPLEX, 1, 80)
+        draw_point(img, position, YELLOW)
 
 
 def main():
+    history = {
+        0: (0, 0),
+        1: (0, 0),
+        2: (0, 0),
+        3: (0, 0),
+        4: (0, 0)
+    }
+
     while True:
         # get image from camera
         frame = get_frame()
@@ -138,13 +156,22 @@ def main():
         hand_middle = get_hand_middle(hand_contour)
         tips = limit_finger_tips(tips, hand_middle)
 
+        # save recent positions
+        if len(tips) == 5:
+            for i in xrange(5):
+                history[i] = tips[i]
+
+        labeled_tips = get_labeled_tips(history, tips)
+
         # draw transformation on image
         thresh_image = cv2.cvtColor(thresh1, cv2.COLOR_GRAY2BGR)
         thresh_with_elements = np.copy(thresh_image)
         frame_with_elements = np.copy(frame)
 
-        draw_elements_to_image(thresh_with_elements, hand_contour, convex_hull, defect_points, hand_middle, tips)
-        draw_elements_to_image(frame_with_elements, hand_contour, convex_hull, defect_points, hand_middle, tips)
+        draw_elements_to_image(thresh_with_elements, hand_contour, convex_hull, defect_points, hand_middle)
+        draw_elements_to_image(frame_with_elements, hand_contour, convex_hull, defect_points, hand_middle)
+
+        draw_labeled_tips(frame_with_elements, labeled_tips)
 
         top = np.hstack((frame, frame_with_elements))
         bottom = np.hstack((thresh_image, thresh_with_elements))
